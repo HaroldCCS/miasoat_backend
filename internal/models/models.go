@@ -11,7 +11,7 @@ import (
 var (
 	allowedOrigins map[string]bool
 	once           sync.Once
-	defaultOrigin = "http://localhost:8080"
+	defaultOrigin = "https://localhost:8080"
 )
 
 // initCORS inicializa el mapa de orígenes permitidos desde variables de entorno.

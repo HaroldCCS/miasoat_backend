@@ -27,7 +27,14 @@ func init() {
 }
 
 func handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	fmt.Println("Received request:", req.Body)
+	fmt.Println("Received request:", req.HTTPMethod, req.Path)
+
+	// Manejar Preflight CORS
+	if req.HTTPMethod == "OPTIONS" {
+		return models.APIResponse(200, "", req)
+	}
+
+	fmt.Println("Received request body:", req.Body)
 
 	var user models.User
 	if err := json.Unmarshal([]byte(req.Body), &user); err != nil {

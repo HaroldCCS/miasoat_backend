@@ -129,11 +129,26 @@ resource "aws_api_gateway_method" "signup_method" {
   authorization = "NONE"
 }
 
-# Lambda integration uses constructed ARN instead of aws_lambda_function references
 resource "aws_api_gateway_integration" "lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.users_api.id
   resource_id             = aws_api_gateway_resource.users_resource.id
   http_method             = aws_api_gateway_method.signup_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:misoat_users_signup/invocations"
+}
+
+resource "aws_api_gateway_method" "signup_options" {
+  rest_api_id   = aws_api_gateway_rest_api.users_api.id
+  resource_id   = aws_api_gateway_resource.users_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "options_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.users_api.id
+  resource_id             = aws_api_gateway_resource.users_resource.id
+  http_method             = aws_api_gateway_method.signup_options.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:misoat_users_signup/invocations"
@@ -145,7 +160,9 @@ resource "aws_api_gateway_deployment" "api_deployment" {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.users_resource.id,
       aws_api_gateway_method.signup_method.id,
-      aws_api_gateway_integration.lambda_integration.id
+      aws_api_gateway_integration.lambda_integration.id,
+      aws_api_gateway_method.signup_options.id,
+      aws_api_gateway_integration.options_integration.id
     ]))
   }
   lifecycle {
