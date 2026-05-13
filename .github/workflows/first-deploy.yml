@@ -1,4 +1,4 @@
-name: Continuous Deployment
+name: First Deploy (Create infrastructure and Apps)
 
 on:
   #push:
@@ -41,9 +41,23 @@ jobs:
       - name: Terraform Setup
         uses: hashicorp/setup-terraform@v3
 
+      - name: Terraform Init & Apply Infra
+        id: infra
+        run: |
+          cd infra
+          terraform init
+          terraform apply -auto-approve
 
       - name: Terraform Init & Apply App
+        if: success() || steps.infra.outcome == 'failure'
         run: |
           cd app
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Terraform Init & Apply Infra (Retry)
+        if: steps.infra.outcome == 'failure'
+        run: |
+          cd infra
           terraform init
           terraform apply -auto-approve
