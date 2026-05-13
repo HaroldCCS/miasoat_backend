@@ -72,6 +72,13 @@ resource "aws_lambda_function" "send_email" {
   handler          = "bootstrap"
   runtime          = "provided.al2023"
   source_code_hash = filebase64sha256("../bin/send_email.zip")
+
+  environment {
+    variables = {
+      SMTP_USERNAME = var.smtp_username
+      SMTP_PASSWORD = var.smtp_password
+    }
+  }
 }
 
 # --- TRIGGERS / MAPPINGS ---

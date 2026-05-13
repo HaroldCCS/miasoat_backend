@@ -46,4 +46,4 @@ jobs:
         run: |
           cd app
           terraform init
-          terraform apply -auto-approve
+          terraform apply -auto-approve -var="smtp_username=${{ secrets.SMTP_USERNAME }}" -var="smtp_password=${{ secrets.SMTP_PASSWORD }}"

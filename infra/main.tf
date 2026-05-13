@@ -198,7 +198,7 @@ resource "aws_iam_role_policy" "eventbridge_policy" {
 
 resource "aws_cloudwatch_event_rule" "scheduler" {
   name                = "misoat-daily-scheduler"
-  schedule_expression = "rate(1 day)"
+  schedule_expression = "cron(0 17 * * ? *)"
 }
 
 resource "aws_cloudwatch_event_target" "scheduler_target" {
