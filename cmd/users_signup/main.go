@@ -31,16 +31,16 @@ func handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 
 	var user models.User
 	if err := json.Unmarshal([]byte(req.Body), &user); err != nil {
-		return models.APIResponse(400, `{"message":"Invalid request body"}`)
+		return models.APIResponse(400, `{"message":"Invalid request body"}`, req)
 	}
 
 	if user.Placa == "" || user.Email == "" {
-		return models.APIResponse(400, `{"message":"placa and email are required"}`)
+		return models.APIResponse(400, `{"message":"placa and email are required"}`, req)
 	}
 
 	item, err := attributevalue.MarshalMap(user)
 	if err != nil {
-		return models.APIResponse(500, `{"message":"Failed to marshal user data"}`)
+		return models.APIResponse(500, `{"message":"Failed to marshal user data"}`, req)
 	}
 
 	_, err = dynamoClient.PutItem(ctx, &dynamodb.PutItemInput{
@@ -49,10 +49,10 @@ func handler(ctx context.Context, req events.APIGatewayProxyRequest) (events.API
 	})
 	if err != nil {
 		fmt.Println("Error putting item in dynamodb:", err)
-		return models.APIResponse(500, `{"message":"Failed to save user"}`)
+		return models.APIResponse(500, `{"message":"Failed to save user"}`, req)
 	}
 
-	return models.APIResponse(201, `{"message":"User created successfully"}`)
+	return models.APIResponse(201, `{"message":"User created successfully"}`, req)
 }
 
 func main() {

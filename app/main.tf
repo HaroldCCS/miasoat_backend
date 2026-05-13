@@ -33,6 +33,12 @@ resource "aws_lambda_function" "users_signup" {
   handler          = "bootstrap"
   runtime          = "provided.al2023"
   source_code_hash = filebase64sha256("../bin/users_signup.zip")
+
+  environment {
+    variables = {
+      CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
+    }
+  }
 }
 
 resource "aws_lambda_function" "create_events" {
