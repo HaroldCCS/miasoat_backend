@@ -27,4 +27,4 @@ jobs:
         run: |
           cd infra
           terraform init
-          terraform apply -auto-approve -var="mongo_uri_value=${{ secrets.MONGO_URI }}"
+          terraform apply -auto-approve
