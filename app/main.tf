@@ -5,7 +5,7 @@ terraform {
     bucket         = "misoat-terraform-state"
     key            = "app/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-lock-table"
+    use_lockfile   = true
     encrypt        = true
   }
   required_providers {
