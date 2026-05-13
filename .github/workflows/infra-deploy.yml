@@ -1,0 +1,30 @@
+name: Infrastructure Base Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-infra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply
+        run: |
+          cd infra
+          terraform init
+          terraform apply -auto-approve -var="mongo_uri_value=${{ secrets.MONGO_URI }}"

@@ -1,0 +1,42 @@
+name: Nuke Infrastructure (Destroy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: 'Escribe "CONFIRMAR" para destruir toda la infraestructura'
+        required: true
+        default: 'NO'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-destroy:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_destroy == 'CONFIRMAR'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Destroy App (Lambdas)
+        run: |
+          cd app
+          terraform init
+          terraform destroy -auto-approve
+
+      - name: Destroy Infra (DB, SQS, API Gateway)
+        run: |
+          cd infra
+          terraform init
+          terraform destroy -auto-approve

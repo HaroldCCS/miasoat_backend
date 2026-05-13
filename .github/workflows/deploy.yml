@@ -1,0 +1,47 @@
+name: Continuous Deployment
+
+on:
+  #push:
+  #  branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build Producer
+        run: |
+          mkdir -p dist_api
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist_api/bootstrap ./cmd/api-producer/main.go
+
+      - name: Build Worker
+        run: |
+          mkdir -p dist_worker
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist_worker/bootstrap ./cmd/sqs-worker/main.go
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Terraform Setup
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init & Apply
+        run: |
+          cd app
+          terraform init
+          terraform apply -auto-approve

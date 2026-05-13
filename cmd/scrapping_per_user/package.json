@@ -1,0 +1,9 @@
+{
+  "name": "scrapping_per_user",
+  "version": "1.0.0",
+  "description": "Scrapping Lambda for Misoat",
+  "main": "index.js",
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.0.0"
+  }
+}
