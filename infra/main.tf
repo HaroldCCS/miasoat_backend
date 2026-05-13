@@ -1,8 +1,8 @@
 terraform {
   required_version = ">= 1.5.0"
   backend "s3" {
-    bucket         = "deploy-lambdas-terraform-state"
-    key            = "misoat/infra/terraform.tfstate"
+    bucket         = "misoat-terraform-state"
+    key            = "infra/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-lock-table"
     encrypt        = true
@@ -18,6 +18,8 @@ terraform {
 provider "aws" {
   region = var.aws_region
 }
+
+data "aws_caller_identity" "current" {}
 
 # --- DYNAMODB ---
 resource "aws_dynamodb_table" "users_table" {
@@ -127,14 +129,14 @@ resource "aws_api_gateway_method" "signup_method" {
   authorization = "NONE"
 }
 
-# Lambda integration
+# Lambda integration uses constructed ARN instead of aws_lambda_function references
 resource "aws_api_gateway_integration" "lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.users_api.id
   resource_id             = aws_api_gateway_resource.users_resource.id
   http_method             = aws_api_gateway_method.signup_method.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.users_signup.invoke_arn
+  uri                     = "arn:aws:apigateway:${var.aws_region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:misoat_users_signup/invocations"
 }
 
 resource "aws_api_gateway_deployment" "api_deployment" {
@@ -161,7 +163,7 @@ resource "aws_api_gateway_stage" "prod" {
 resource "aws_lambda_permission" "apigw_signup" {
   statement_id  = "AllowAPIGatewayInvokeMisoatUsersSignUp"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.users_signup.function_name
+  function_name = "misoat_users_signup"
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.users_api.execution_arn}/*/*"
 }
@@ -189,7 +191,7 @@ resource "aws_iam_role_policy" "eventbridge_policy" {
     Statement = [{
       Action   = "lambda:InvokeFunction"
       Effect   = "Allow"
-      Resource = aws_lambda_function.create_events.arn
+      Resource = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:misoat_create_events"
     }]
   })
 }
@@ -202,80 +204,17 @@ resource "aws_cloudwatch_event_rule" "scheduler" {
 resource "aws_cloudwatch_event_target" "scheduler_target" {
   rule      = aws_cloudwatch_event_rule.scheduler.name
   target_id = "CreateEventsLambda"
-  arn       = aws_lambda_function.create_events.arn
+  arn       = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:misoat_create_events"
 }
 
 resource "aws_lambda_permission" "allow_cloudwatch" {
   statement_id  = "AllowExecutionFromCloudWatch_Misoat"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.create_events.function_name
+  function_name = "misoat_create_events"
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.scheduler.arn
 }
 
-# --- LAMBDAS ---
-# Assuming these will be built and placed into the /bin folder at the root
-
-data "archive_file" "dummy_zip" {
-  type        = "zip"
-  output_path = "${path.module}/dummy.zip"
-
-  source {
-    content  = "Dummy content"
-    filename = "dummy.txt"
-  }
-}
-
-resource "aws_lambda_function" "users_signup" {
-  filename      = fileexists("../bin/users_signup.zip") ? "../bin/users_signup.zip" : data.archive_file.dummy_zip.output_path
-  function_name = "misoat_users_signup"
-  role          = aws_iam_role.lambda_exec_shared.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  source_code_hash = fileexists("../bin/users_signup.zip") ? filebase64sha256("../bin/users_signup.zip") : data.archive_file.dummy_zip.output_base64sha256
-}
-
-resource "aws_lambda_function" "create_events" {
-  filename      = fileexists("../bin/create_events.zip") ? "../bin/create_events.zip" : data.archive_file.dummy_zip.output_path
-  function_name = "misoat_create_events"
-  role          = aws_iam_role.lambda_exec_shared.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  source_code_hash = fileexists("../bin/create_events.zip") ? filebase64sha256("../bin/create_events.zip") : data.archive_file.dummy_zip.output_base64sha256
-}
-
-resource "aws_lambda_function" "scrapping_per_user" {
-  filename      = fileexists("../bin/scrapping_per_user.zip") ? "../bin/scrapping_per_user.zip" : data.archive_file.dummy_zip.output_path
-  function_name = "misoat_scrapping_per_user"
-  role          = aws_iam_role.lambda_exec_shared.arn
-  handler       = "index.handler"
-  runtime       = "nodejs20.x"
-  source_code_hash = fileexists("../bin/scrapping_per_user.zip") ? filebase64sha256("../bin/scrapping_per_user.zip") : data.archive_file.dummy_zip.output_base64sha256
-}
-
-resource "aws_lambda_function" "send_email" {
-  filename      = fileexists("../bin/send_email.zip") ? "../bin/send_email.zip" : data.archive_file.dummy_zip.output_path
-  function_name = "misoat_send_email"
-  role          = aws_iam_role.lambda_exec_shared.arn
-  handler       = "bootstrap"
-  runtime       = "provided.al2023"
-  source_code_hash = fileexists("../bin/send_email.zip") ? filebase64sha256("../bin/send_email.zip") : data.archive_file.dummy_zip.output_base64sha256
-}
-
-# Event Source Mappings for SQS -> Lambdas
-resource "aws_lambda_event_source_mapping" "scrapping_sqs_mapping" {
-  event_source_arn = aws_sqs_queue.queue_scrapping.arn
-  function_name    = aws_lambda_function.scrapping_per_user.arn
-  batch_size       = 1
-}
-
-resource "aws_lambda_event_source_mapping" "send_email_sqs_mapping" {
-  event_source_arn = aws_sqs_queue.queue_send_email.arn
-  function_name    = aws_lambda_function.send_email.arn
-  batch_size       = 1
-}
-
-# --- OUTPUTS ---
 output "api_gateway_url" {
   value = "${aws_api_gateway_stage.prod.invoke_url}/users"
 }

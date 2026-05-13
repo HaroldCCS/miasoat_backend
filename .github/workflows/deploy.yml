@@ -19,17 +19,18 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.24'
 
-      - name: Build Producer
-        run: |
-          mkdir -p dist_api
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist_api/bootstrap ./cmd/api-producer/main.go
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Build Worker
-        run: |
-          mkdir -p dist_worker
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist_worker/bootstrap ./cmd/sqs-worker/main.go
+      - name: Make Build Script Executable
+        run: chmod +x build_lambdas.sh
+
+      - name: Build All Lambdas
+        run: ./build_lambdas.sh
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -40,7 +41,13 @@ jobs:
       - name: Terraform Setup
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init & Apply
+      - name: Terraform Init & Apply Infra
+        run: |
+          cd infra
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Terraform Init & Apply App
         run: |
           cd app
           terraform init

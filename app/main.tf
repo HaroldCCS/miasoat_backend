@@ -2,8 +2,8 @@
 terraform {
   required_version = ">= 1.5.0"
   backend "s3" {
-    bucket         = "deploy-lambdas-terraform-state"
-    key            = "misoat/app/terraform.tfstate"
+    bucket         = "misoat-terraform-state"
+    key            = "app/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "terraform-lock-table"
     encrypt        = true
@@ -21,75 +21,68 @@ provider "aws" {
 }
 
 # --- DATA SOURCES ---
-# Estos bloques permiten a este Terraform "leer" recursos creados por el de infra
-data "aws_iam_role" "shared_role" { name = "go_lambda_execution_role_shared" }
-data "aws_sqs_queue" "user_queue" { name = "user-creation-queue" }
-
-# --- EMPAQUETADO ---
-data "archive_file" "api_zip" {
-  type        = "zip"
-  source_file = "../dist_api/bootstrap" # Apunta al archivo llamado bootstrap
-  output_path = "api_producer.zip"
-}
-
-data "archive_file" "worker_zip" {
-  type        = "zip"
-  source_file = "../dist_worker/bootstrap" # Apunta al archivo llamado bootstrap
-  output_path = "worker_processor.zip"
-}
+data "aws_iam_role" "shared_role" { name = "go_lambda_execution_role_shared_misoat" }
+data "aws_sqs_queue" "queue_scrapping" { name = "queue-scrapping-misoat" }
+data "aws_sqs_queue" "queue_send_email" { name = "queue-send-email-misoat" }
 
 # --- LAMBDAS ---
-
-# 1. Producer API
-resource "aws_lambda_function" "api_producer" {
-  function_name    = var.lambda_producer_name
-  filename         = data.archive_file.api_zip.output_path
-  source_code_hash = data.archive_file.api_zip.output_base64sha256
+resource "aws_lambda_function" "users_signup" {
+  filename         = "../bin/users_signup.zip"
+  function_name    = "misoat_users_signup"
+  role             = data.aws_iam_role.shared_role.arn
   handler          = "bootstrap"
   runtime          = "provided.al2023"
-  role             = data.aws_iam_role.shared_role.arn
-  architectures    = ["arm64"]
+  source_code_hash = filebase64sha256("../bin/users_signup.zip")
+}
 
+resource "aws_lambda_function" "create_events" {
+  filename         = "../bin/create_events.zip"
+  function_name    = "misoat_create_events"
+  role             = data.aws_iam_role.shared_role.arn
+  handler          = "bootstrap"
+  runtime          = "provided.al2023"
+  source_code_hash = filebase64sha256("../bin/create_events.zip")
+  
   environment {
     variables = {
-      TABLE_NAME = "UsersTable"
-      SQS_URL    = data.aws_sqs_queue.user_queue.id
+      QUEUE_SCRAPPING_URL = data.aws_sqs_queue.queue_scrapping.url
     }
   }
 }
 
-# 2. Worker SQS
-resource "aws_lambda_function" "sqs_worker" {
-  function_name    = var.lambda_worker_name 
-  filename         = data.archive_file.worker_zip.output_path
-  source_code_hash = data.archive_file.worker_zip.output_base64sha256
-  handler          = "bootstrap"
-  runtime          = "provided.al2023"
+resource "aws_lambda_function" "scrapping_per_user" {
+  filename         = "../bin/scrapping_per_user.zip"
+  function_name    = "misoat_scrapping_per_user"
   role             = data.aws_iam_role.shared_role.arn
-  architectures    = ["arm64"]
+  handler          = "index.handler"
+  runtime          = "nodejs20.x"
+  source_code_hash = filebase64sha256("../bin/scrapping_per_user.zip")
 
   environment {
     variables = {
-      TABLE_NAME  = "UsersTable"
-      MONGO_URI   = var.mongo_param_path
+      QUEUE_SEND_EMAIL_URL = data.aws_sqs_queue.queue_send_email.url
     }
   }
 }
 
-# --- TRIGGERS ---
-resource "aws_lambda_event_source_mapping" "sqs_trigger" {
-  event_source_arn = data.aws_sqs_queue.user_queue.arn
-  function_name    = aws_lambda_function.sqs_worker.arn
+resource "aws_lambda_function" "send_email" {
+  filename         = "../bin/send_email.zip"
+  function_name    = "misoat_send_email"
+  role             = data.aws_iam_role.shared_role.arn
+  handler          = "bootstrap"
+  runtime          = "provided.al2023"
+  source_code_hash = filebase64sha256("../bin/send_email.zip")
+}
+
+# --- TRIGGERS / MAPPINGS ---
+resource "aws_lambda_event_source_mapping" "scrapping_sqs_mapping" {
+  event_source_arn = data.aws_sqs_queue.queue_scrapping.arn
+  function_name    = aws_lambda_function.scrapping_per_user.arn
   batch_size       = 1
-  scaling_config {
-    maximum_concurrency = 2 #2 es el minimo por AWS
-  }
 }
 
-resource "aws_lambda_permission" "apigw_lambda" {
-  statement_id  = "AllowAPIGatewayInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.api_producer.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "arn:aws:execute-api:${var.aws_region}:${var.aws_account_id}:*/*/*"
+resource "aws_lambda_event_source_mapping" "send_email_sqs_mapping" {
+  event_source_arn = data.aws_sqs_queue.queue_send_email.arn
+  function_name    = aws_lambda_function.send_email.arn
+  batch_size       = 1
 }
